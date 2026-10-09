@@ -211,6 +211,7 @@
           <div class="check"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M5 12.5l4.5 4.5L19 7" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
           <h1>You're all set</h1>
           <p>Thank you — we have your answers. Fluent Financials will review them and reach out if we have any questions.</p>
+          <div id="done-copy"></div>
         </div>
       </section>
     </main>
@@ -870,9 +871,34 @@
     }
   });
 
+  // The branded summary, offered for download. The same file was emailed;
+  // if anything about it failed, the thank-you screen simply stays as is.
+  function showCopy(copy){
+    const box = document.getElementById('done-copy');
+    if (!box || !copy || !copy.pdf) return;
+    try {
+      const bytes = Uint8Array.from(atob(copy.pdf), c => c.charCodeAt(0));
+      const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
+      const p = document.createElement('p');
+      p.textContent = copy.emailed
+        ? 'We have also emailed you a summary of your answers and the documents we need.'
+        : 'Here is a summary of your answers and the documents we need.';
+      const a = document.createElement('a');
+      a.className = 'btn btn-primary';
+      a.href = url;
+      a.download = copy.name || 'questionnaire-summary.pdf';
+      a.style.textDecoration = 'none';
+      a.style.marginTop = '8px';
+      a.textContent = 'Download your summary (PDF)';
+      box.appendChild(p);
+      box.appendChild(a);
+    } catch (e) { /* no download offered; the email has it */ }
+  }
+
   function finishUp(){
     show('screen-loading');
     apiPost('submit', { token: TOKEN, sessionKey: SESSION_KEY }).then(res => {
+      showCopy(res && res.copy);
       show('screen-done');
     });
   }
