@@ -210,7 +210,7 @@
         <div class="complete-wrap">
           <div class="check"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M5 12.5l4.5 4.5L19 7" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
           <h1>You're all set</h1>
-          <p>Fluent Financials will review your answers and follow up with your personalized plan. No further action is needed from you right now.</p>
+          <p>Thank you — we have your answers. Fluent Financials will review them and reach out if we have any questions.</p>
         </div>
       </section>
     </main>
@@ -369,6 +369,7 @@
   let SECTIONS = {};      // section_id -> {title, intro}
   let SECTION_ORDER = [];
   let DOCS = [];          // personalized checklist
+  let UPLOADS = { mode: 'portal' };  // where documents go — see CONFIG.CLIENT_UPLOADS
   let seenSections = {};  // sections whose intro has already been shown
   let PASS = 1;
 
@@ -379,6 +380,7 @@
       questions = res.questions || [];
       PASS = res.pass || 1;
       DOCS = res.documents || [];
+      UPLOADS = res.uploads || { mode: 'portal' };
       SECTION_ORDER = (res.sections || []).map(sec => sec.id);
       SECTIONS = {};
       (res.sections || []).forEach(sec => { SECTIONS[sec.id] = sec; });
@@ -635,8 +637,72 @@
       .catch(() => paintChecklist(wrap));
   }
 
+  // Drake Portal mode (decided 2026-09-22): clients upload in Drake, so
+  // this screen is the list of what to send plus a button to get there.
+  // No upload buttons — a file sent here would bypass Drake entirely.
+  function paintDrakeChecklist(wrap){
+    wrap.innerHTML = '';
+    const portalButton = () => {
+      const a = document.createElement('a');
+      a.className = 'btn btn-primary';
+      a.href = UPLOADS.url;
+      a.target = '_blank';
+      a.rel = 'noopener';
+      a.style.textDecoration = 'none';
+      a.style.margin = '6px 0 4px';
+      a.textContent = 'Click here to upload your documents to our secure Drake portal';
+      return a;
+    };
+    const note = () => {
+      const n = document.createElement('div');
+      n.style.cssText = 'font-size:12.5px;color:var(--slate);text-align:center;margin-bottom:16px;';
+      n.textContent = 'Opens in a new tab. Sign in with your Drake portal username and password, then come back here to continue.';
+      return n;
+    };
+
+    const summary = document.createElement('div');
+    summary.className = 'doc-summary';
+    summary.textContent = DOCS.length
+      ? 'Please upload these through our secure Drake portal. You can come back to this list any time.'
+      : 'Nothing specific is needed from you based on your answers. If you have something you think we should see, you can send it through our secure Drake portal.';
+    wrap.appendChild(summary);
+    wrap.appendChild(portalButton());
+    wrap.appendChild(note());
+
+    const groups = {};
+    DOCS.forEach(d => { (groups[d.category] = groups[d.category] || []).push(d); });
+    Object.keys(groups).forEach(cat => {
+      const g = document.createElement('div');
+      g.className = 'doc-group';
+      const h = document.createElement('h4');
+      h.textContent = cat;
+      g.appendChild(h);
+      groups[cat].forEach(d => {
+        const got = d.status === 'Received' || d.status === 'Waived';
+        const row = document.createElement('div');
+        row.className = 'doc-item' + (got ? ' done' : '');
+        const check = document.createElement('div');
+        check.className = 'doc-check';
+        check.textContent = got ? '✓' : '';
+        row.appendChild(check);
+        const body = document.createElement('div');
+        body.className = 'doc-body';
+        body.innerHTML = '<div class="doc-label">' + escapeHtml(d.label) +
+          (d.required && !got ? '<span class="doc-req">Needed</span>' : '') + '</div>' +
+          (d.help ? '<div class="doc-help">' + escapeHtml(d.help) + '</div>' : '') +
+          (got ? '<div class="doc-files">Received — thank you</div>' : '');
+        row.appendChild(body);
+        g.appendChild(row);
+      });
+      wrap.appendChild(g);
+    });
+
+    if (DOCS.length > 4){ wrap.appendChild(portalButton()); wrap.appendChild(note()); }
+  }
+
   function paintChecklist(wrap){
     wrap.innerHTML = '';
+    if (UPLOADS.mode === 'drake'){ paintDrakeChecklist(wrap); return; }
 
     const done = DOCS.filter(d => d.fileCount > 0).length;
     const reqOutstanding = DOCS.filter(d => d.required && d.fileCount === 0).length;
