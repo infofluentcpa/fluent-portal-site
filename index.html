@@ -450,6 +450,22 @@
     c.innerHTML = '';
     toTop();
 
+    // The first screen says why the questions matter: clients answer more
+    // carefully when they see it's for advice about them (AH, 2026-10-09).
+    // Explains, never steers an answer.
+    if (qIndex === 0){
+      const w = document.createElement('div');
+      w.className = 'section-intro';
+      w.style.marginBottom = '14px';
+      w.innerHTML = PASS === 2
+        ? '<div class="eyebrow">Why these questions</div><h2>The details that make our advice yours</h2>' +
+          '<p>These build on what you already told us. They are the specifics that let us turn your answers into advice for your situation — nothing here repeats a question you have answered.</p>'
+        : '<div class="eyebrow">Before you start</div><h2>Your answers shape the advice you get</h2>' +
+          '<p>We use what you tell us to find the deductions you qualify for, ask only for the documents that matter, and bring you planning ideas built around your situation — not a generic checklist.</p>' +
+          '<p style="margin-top:8px;">Answer as best you can. If you are unsure about anything, tap “I’m not sure” — it is a perfectly good answer, and we will go over it with you.</p>';
+      c.appendChild(w);
+    }
+
     // First question of a new section gets a short intro above it, so a
     // longer form reads as a series of short stretches rather than one
     // undifferentiated list.
