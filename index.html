@@ -277,6 +277,10 @@
     boot();
   } else {
     show('screen-code');
+    // Google can take 10+ seconds to wake the script after a quiet spell
+    // (measured 14.5 s on 2026-10-10). Wake it now, while the client finds
+    // their code, rather than when they press Continue.
+    apiGet('ping').catch(function () {});
   }
 
   document.getElementById('code-continue').addEventListener('click', () => {
@@ -294,8 +298,20 @@
     boot();
   });
 
+  // Set once the client is past the code screen, so a slow link check that
+  // answers late can never pull them back out of the questionnaire.
+  let PAST_CODE = false;
+
   function boot(){
+  // Most clients need the 6-digit code anyway, so show that screen at once
+  // and check the link in the background — the client is busy finding the
+  // code while Google wakes the script, instead of watching a spinner.
+  const needsCodeLikely = !SESSION_KEY;
+  // Focus on the next tick: boot() runs before the code boxes are wired up
+  // further down this script (calling it directly threw and stopped the page).
+  if (needsCodeLikely){ show('screen-access'); setTimeout(focusFirstCodeBox, 0); }
   apiGet('validateToken', { token: TOKEN }).then(res => {
+    if (PAST_CODE) return;
     if (!res.ok){
       const copy = {
         expired: 'This link has expired. Contact us for a new one.',
@@ -312,14 +328,13 @@
       document.getElementById('access-lead').textContent =
         (res.firstName ? 'Hi ' + res.firstName + ', we' : 'We') +
         ' emailed a 6-digit code separately from your link. Enter it below to open your questionnaire.';
-      show('screen-access');
-      focusFirstCodeBox();
+      if (!needsCodeLikely){ show('screen-access'); focusFirstCodeBox(); }
 
     } else {
       SESSION_KEY = res.sessionKey;
       loadQuestions();
     }
-  }).catch(() => message('Connection problem', 'We couldn’t reach the server. Check your connection and reload the page.'));
+  }).catch(() => { if (!PAST_CODE) message('Connection problem', 'We couldn’t reach the server. Check your connection and reload the page.'); });
   } // end boot()
 
   // ---- Passcode screen ----
@@ -375,6 +390,7 @@
   let PASS = 1;
 
   function loadQuestions(){
+    PAST_CODE = true;
     show('screen-loading');
     apiGet('getQuestions', { token: TOKEN, sessionKey: SESSION_KEY }).then(res => {
       if (!res.ok){ message('Session expired', 'Please reopen your link to continue.'); return; }
@@ -386,18 +402,33 @@
       SECTIONS = {};
       (res.sections || []).forEach(sec => { SECTIONS[sec.id] = sec; });
 
-      // Pass 2 branches off pass 1 answers, so seed them before rendering
+      // This year's saved answers and notes: pass 2 branches off pass 1, and
+      // a client who closed the form part-way picks up where they left off.
+      const byId = {};
+      questions.forEach(q => { byId[q.id] = q; });
+      const mine = {};
       if (res.priorAnswers){
         Object.keys(res.priorAnswers).forEach(id => {
-          if (!answers[id]) answers[id] = { answer: res.priorAnswers[id], weight: 0, text: '' };
+          if (answers[id]) return;
+          const noteFor = /_NOTE$/.test(id) ? id.slice(0, -5) : '';
+          answers[id] = { answer: res.priorAnswers[id], weight: 0,
+                          text: noteFor ? 'Client note on: ' + (byId[noteFor] ? byId[noteFor].text : noteFor) : '' };
+          if (noteFor) notesSent[id] = true;
+          if (byId[id]) mine[id] = true;
         });
       }
       if (!questions.length){ message('Nothing to answer', 'There’s nothing pending for you right now.'); return; }
-      qIndex = 0;
+      // Resume at the first question still unanswered (or the last one, so
+      // finishing stays the client's choice — never an automatic submit).
+      const vis = visibleQuestions();
+      RESUMED = Object.keys(mine).length > 0;
+      const firstOpen = vis.findIndex(q => !answers[q.id]);
+      qIndex = !RESUMED ? 0 : (firstOpen === -1 ? vis.length - 1 : firstOpen);
       show('screen-form');
       renderQuestion();
-    });
+    }).catch(() => message('Connection problem', 'We couldn’t reach the server. Check your connection and reload the page — your answers so far are saved.'));
   }
+  let RESUMED = false, WELCOMED_BACK = false;
 
   // ---- Conditional visibility ----
   // A question with a show_if expression only appears once that condition
@@ -453,7 +484,15 @@
     // The first screen says why the questions matter: clients answer more
     // carefully when they see it's for advice about them (AH, 2026-10-09).
     // Explains, never steers an answer.
-    if (qIndex === 0){
+    if (RESUMED && !WELCOMED_BACK){
+      WELCOMED_BACK = true;
+      const wb = document.createElement('div');
+      wb.className = 'section-intro';
+      wb.style.marginBottom = '14px';
+      wb.innerHTML = '<div class="eyebrow">Welcome back</div><h2>Your answers are saved</h2>' +
+        '<p>You are picking up where you left off. Use Back to look over or change anything you answered before.</p>';
+      c.appendChild(wb);
+    } else if (qIndex === 0){
       const w = document.createElement('div');
       w.className = 'section-intro';
       w.style.marginBottom = '14px';
