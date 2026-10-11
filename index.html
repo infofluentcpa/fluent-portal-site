@@ -458,7 +458,10 @@
     return questions.filter(isVisible);
   }
 
-  function renderQuestion(){
+  // stay = { key, top, y }: a redraw caused by tapping something on the SAME question keeps
+  // that thing where it was on screen. Only moving to another question goes to the top
+  // (a tap used to jump every time, which made ticking several boxes maddening, 2026-10-11).
+  function renderQuestion(stay){
     const vis = visibleQuestions();
     if (!vis.length){ finishUp(); return; }
     // Keep the index inside the currently-visible set
@@ -479,7 +482,7 @@
 
     const c = document.getElementById('q-container');
     c.innerHTML = '';
-    toTop();
+    if (!stay) toTop();
 
     // The first screen says why the questions matter: clients answer more
     // carefully when they see it's for advice about them (AH, 2026-10-09).
@@ -545,6 +548,7 @@
       q.options.forEach(opt => {
         const row = document.createElement('div');
         row.className = 'option' + (isMulti ? ' multi' : '') + (selected.has(opt) ? ' selected' : '');
+        row.setAttribute('data-key', 'opt:' + q.options.indexOf(opt));
         const explain = optHelp[opt];
         row.innerHTML = '<div class="dot"></div><div class="opt-body"><div class="opt-text">' + escapeHtml(opt) + '</div>' +
           (explain ? '<div class="opt-help">' + escapeHtml(explain) + '</div>' : '') + '</div>' +
@@ -568,13 +572,23 @@
           else delete answers[q.id];
           // renderQuestion() redraws the tip box itself. Calling
           // maybeShowNudge here as well drew it twice (fixed 2026-10-06).
-          renderQuestion();
+          renderQuestion(stayAt(row));
         });
         c.appendChild(row);
       });
       renderUnsure(c, q);
       maybeShowNudge(q);
     }
+    if (stay) keepInPlace(stay);
+  }
+
+  function stayAt(el){ return { key: el.getAttribute('data-key'), top: el.getBoundingClientRect().top, y: window.scrollY }; }
+  function keepInPlace(stay){
+    try {
+      const el = document.querySelector('#q-container [data-key="' + stay.key + '"]');
+      if (el) window.scrollBy(0, el.getBoundingClientRect().top - stay.top);
+      else window.scrollTo(0, stay.y);
+    } catch (e) {}
   }
 
   // ---- "I'm not sure" ----
@@ -599,6 +613,7 @@
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'unsure-btn' + (on ? ' on' : '');
+    btn.setAttribute('data-key', 'unsure');
     btn.textContent = isChoice
       ? (on ? '\u2713 Marked as not sure \u2014 tap to undo' : 'I\u2019m not sure \u2014 let me explain in my own words')
       : (on ? '\u2713 Adding a note \u2014 tap to remove' : 'I\u2019m not sure \u2014 let me explain in my own words');
@@ -631,7 +646,7 @@
             answers[q.id] = { answer: label, weight: q.weight, text: q.text };
           }
         }
-        renderQuestion();
+        renderQuestion(stayAt(btn));
         const again = document.querySelector('#q-container .unsure-box textarea');
         if (again) setTimeout(() => again.focus(), 60);
       } else {
@@ -645,7 +660,7 @@
           }
         }
         delete answers[noteId];
-        renderQuestion();
+        renderQuestion(stayAt(btn));
       }
     });
   }
