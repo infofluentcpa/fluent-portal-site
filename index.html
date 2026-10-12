@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Fluent Financials — Client Portal</title>
+<title>Fluent Financials | Client Portal</title>
 <link rel="icon" type="image/png" href="https://portal.fluentcpa.com/favicon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -49,6 +49,7 @@
   .progress-label{font-size:12.5px;color:var(--slate);margin-bottom:8px;display:flex;justify-content:space-between;align-items:baseline;}
   .progress-label #progress-pct{font-family:'Space Grotesk',sans-serif;font-weight:600;color:var(--teal);}
   .progress-track{height:6px;border-radius:4px;background:var(--mist-line);overflow:hidden;margin-bottom:30px;}
+  .save-note{font-size:12px;color:var(--slate);margin:6px 0 2px;}
   .progress-fill{height:100%;width:0%;background:var(--teal);border-radius:4px;transition:width .3s ease;}
 
   .q-block h2{font-size:19px;font-weight:600;line-height:1.4;margin:0 0 4px;}
@@ -169,7 +170,7 @@
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M6 11V8a6 6 0 1112 0v3" stroke="#15838E" stroke-width="2" stroke-linecap="round"/><rect x="4" y="11" width="16" height="10" rx="2.5" stroke="#15838E" stroke-width="2"/></svg>
         </div>
         <h1>Enter your access code</h1>
-        <p class="lead">Check the first email we sent you — copy the access code shown there and paste it below.</p>
+        <p class="lead">Check the first email we sent you. Copy the access code shown there and paste it below.</p>
         <div class="error-box" id="code-error"></div>
         <input type="text" id="code-input" placeholder="Access code" autocomplete="off" autocapitalize="off" spellcheck="false"
           style="width:100%;padding:14px 16px;font-family:'Space Grotesk',sans-serif;font-size:16px;border:1.5px solid var(--mist-line);border-radius:10px;background:var(--mist);color:var(--ink);margin-bottom:16px;">
@@ -198,6 +199,7 @@
       <section class="screen" id="screen-form">
         <div class="progress-label"><span id="progress-label">Question 1</span><span id="progress-pct"></span></div>
         <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+        <div class="save-note">✓ Saved as you go. You can close this page and come back any time with the link in your email.</div>
         <div class="error-box" id="form-error"></div>
         <div class="q-block" id="q-container"></div>
         <div class="nav-row">
@@ -210,7 +212,7 @@
         <div class="complete-wrap">
           <div class="check"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M5 12.5l4.5 4.5L19 7" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
           <h1>You're all set</h1>
-          <p>Thank you — we have your answers. Fluent Financials will review them and reach out if we have any questions.</p>
+          <p>Thank you. We have your answers. Fluent Financials will review them and reach out if we have any questions.</p>
           <div id="done-copy"></div>
         </div>
       </section>
@@ -318,7 +320,7 @@
         revoked: 'This link is no longer active. Contact us for a new one.',
         locked: 'Too many incorrect codes were entered. Contact us to unlock this form.',
         submitted: 'This questionnaire has already been submitted. Thank you!',
-        invalid: 'That access code isn’t valid — check it was copied in full, with no extra spaces.'
+        invalid: 'That access code isn’t valid. Check it was copied in full, with no extra spaces.'
       };
       message(res.error === 'invalid' ? 'Access code not recognized' : 'This link isn’t working',
         copy[res.error] || 'Something went wrong opening this link.');
@@ -426,7 +428,7 @@
       qIndex = !RESUMED ? 0 : (firstOpen === -1 ? vis.length - 1 : firstOpen);
       show('screen-form');
       renderQuestion();
-    }).catch(() => message('Connection problem', 'We couldn’t reach the server. Check your connection and reload the page — your answers so far are saved.'));
+    }).catch(() => message('Connection problem', 'We couldn’t reach the server. Check your connection and reload the page. Your answers so far are saved.'));
   }
   let RESUMED = false, WELCOMED_BACK = false;
 
@@ -501,10 +503,12 @@
       w.style.marginBottom = '14px';
       w.innerHTML = PASS === 2
         ? '<div class="eyebrow">Why these questions</div><h2>The details that make our advice yours</h2>' +
-          '<p>These build on what you already told us. They are the specifics that let us turn your answers into advice for your situation — nothing here repeats a question you have answered.</p>'
+          '<p>These build on what you already told us. They are the specifics that let us turn your answers into advice for your situation. Nothing here repeats a question you have answered.</p>' +
+          '<p style="margin-top:8px;">You don’t have to finish in one go: your answers save as you go, and opening the link in your email again brings you back to where you left off.</p>'
         : '<div class="eyebrow">Before you start</div><h2>Your answers shape the advice you get</h2>' +
-          '<p>We use what you tell us to find the deductions you qualify for, ask only for the documents that matter, and bring you planning ideas built around your situation — not a generic checklist.</p>' +
-          '<p style="margin-top:8px;">Answer as best you can. If you are unsure about anything, tap “I’m not sure” — it is a perfectly good answer, and we will go over it with you.</p>';
+          '<p>We use what you tell us to find the deductions you qualify for, ask only for the documents that matter, and bring you planning ideas built around your situation, not a generic checklist.</p>' +
+          '<p style="margin-top:8px;">Answer as best you can. If you are unsure about anything, tap “I’m not sure”. It is a perfectly good answer, and we will go over it with you.</p>' +
+          '<p style="margin-top:8px;">You don’t have to finish in one go: your answers save as you go, and opening the link in your email again brings you back to where you left off.</p>';
       c.appendChild(w);
     }
 
@@ -682,7 +686,7 @@
     if (isNum){ el.type = 'number'; el.inputMode = 'decimal'; }
     else { el.rows = 4; }
     el.className = 'freetext';
-    el.placeholder = isNum ? 'Enter a number' : 'Type your answer here — or leave blank if nothing comes to mind';
+    el.placeholder = isNum ? 'Enter a number' : 'Type your answer here, or leave blank if nothing comes to mind';
     if (prior) el.value = Array.isArray(prior.answer) ? prior.answer.join(' ') : String(prior.answer || '');
     el.addEventListener('input', () => {
       const v = el.value.trim();
@@ -721,21 +725,30 @@
       a.rel = 'noopener';
       a.style.textDecoration = 'none';
       a.style.margin = '6px 0 4px';
-      a.textContent = 'Click here to upload your documents to our secure Drake portal';
+      a.textContent = 'Upload your documents to ' + (UPLOADS.name || 'our secure portal');
       return a;
     };
     const note = () => {
       const n = document.createElement('div');
       n.style.cssText = 'font-size:12.5px;color:var(--slate);text-align:center;margin-bottom:16px;';
-      n.textContent = 'Opens in a new tab. Sign in with your Drake portal username and password, then come back here to continue.';
+      n.textContent = UPLOADS.username
+        ? 'Opens in a new tab. Your username is ' + UPLOADS.username + '. Sign in with the password you set there, then come back here to continue.'
+        : 'Opens in a new tab. Sign in with your secure portal login, then come back here to continue.' +
+          (UPLOADS.phone ? ' No login yet? Call us at ' + UPLOADS.phone + ' and we’ll set one up.' : '');
+      if (UPLOADS.provider){
+        const sp = document.createElement('div');
+        sp.style.cssText = 'font-size:11px;color:var(--slate);opacity:.8;margin-top:3px;';
+        sp.textContent = UPLOADS.provider;
+        n.appendChild(sp);
+      }
       return n;
     };
 
     const summary = document.createElement('div');
     summary.className = 'doc-summary';
     summary.textContent = DOCS.length
-      ? 'Please upload these through our secure Drake portal. You can come back to this list any time.'
-      : 'Nothing specific is needed from you based on your answers. If you have something you think we should see, you can send it through our secure Drake portal.';
+      ? 'Please upload these through ' + (UPLOADS.name || 'our secure portal') + '. You can come back to this list any time.'
+      : 'Nothing specific is needed from you based on your answers. If you have something you think we should see, you can send it through ' + (UPLOADS.name || 'our secure portal') + '.';
     wrap.appendChild(summary);
     wrap.appendChild(portalButton());
     wrap.appendChild(note());
@@ -761,7 +774,7 @@
         body.innerHTML = '<div class="doc-label">' + escapeHtml(d.label) +
           (d.required && !got ? '<span class="doc-req">Needed</span>' : '') + '</div>' +
           (d.help ? '<div class="doc-help">' + escapeHtml(d.help) + '</div>' : '') +
-          (got ? '<div class="doc-files">Received — thank you</div>' : '');
+          (got ? '<div class="doc-files">Received, thank you</div>' : '');
         row.appendChild(body);
         g.appendChild(row);
       });
@@ -783,7 +796,7 @@
     summary.textContent = DOCS.length
       ? (done + ' of ' + DOCS.length + ' uploaded.' +
          (reqOutstanding
-           ? ' ' + reqOutstanding + ' still needed before we can file. You can come back to finish — nothing is lost.'
+           ? ' ' + reqOutstanding + ' still needed before we can file. You can come back to finish. Nothing is lost.'
            : ' That is everything we asked for. Thank you.'))
       : 'Nothing specific is needed from you based on your answers. If you have something you think we should see, add it below.';
     wrap.appendChild(summary);
@@ -851,7 +864,7 @@
       document.body.removeChild(input);
       if (!file) return;
       if (file.size > 45 * 1024 * 1024){
-        showFormError('That file is over 45MB — please split it or send it separately.');
+        showFormError('That file is over 45MB. Please split it or send it separately.');
         return;
       }
       uploadOne(file, doc, hostEl);
@@ -885,7 +898,7 @@
           if (wrap) paintChecklist(wrap);
         } else {
           status.textContent = 'Could not upload ' + file.name +
-            (res && res.message ? ' — ' + res.message : '. Please try again.');
+            (res && res.message ? ', ' + res.message : '. Please try again.');
         }
       }).catch(() => {
         status.textContent = 'Could not upload ' + file.name + '. Please try again.';
