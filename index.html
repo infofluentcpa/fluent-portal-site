@@ -91,6 +91,20 @@
   .freetext{width:100%;padding:13px 15px;border:1.5px solid var(--mist-line);border-radius:11px;font-family:'Inter',sans-serif;font-size:15px;color:var(--ink);background:var(--mist);resize:vertical;line-height:1.5;}
   .freetext:focus{outline:none;border-color:var(--teal);background:var(--paper);box-shadow:0 0 0 3px var(--teal-wash);}
   .freetext::placeholder{color:var(--slate);opacity:.6;}
+  /* #36b address suggestions and rosters */
+  .addr-list{border:1.5px solid var(--mist-line);border-radius:11px;margin-top:6px;overflow:hidden;background:var(--paper);}
+  .addr-opt{display:block;width:100%;text-align:left;padding:12px 14px;border:0;border-bottom:1px solid var(--mist-line);background:var(--paper);font-family:'Inter',sans-serif;font-size:14.5px;color:var(--ink);cursor:pointer;}
+  .addr-opt:last-child{border-bottom:0;}
+  .addr-opt:hover,.addr-opt:focus{background:var(--teal-wash);outline:none;}
+  .addr-note{font-size:13px;color:var(--slate);margin-top:7px;}
+  .roster-row{border:1.5px solid var(--mist-line);border-radius:12px;padding:12px 14px 4px;margin-bottom:10px;background:var(--paper);}
+  .roster-row .r-head{display:flex;justify-content:space-between;align-items:center;font-size:12px;font-weight:600;letter-spacing:.6px;text-transform:uppercase;color:var(--slate);margin-bottom:6px;}
+  .roster-row label{display:block;font-size:13px;font-weight:600;color:var(--ink);margin:6px 0 4px;}
+  .roster-row .freetext,.roster-row select{margin-bottom:6px;}
+  .roster-row select{width:100%;padding:12px 13px;border:1.5px solid var(--mist-line);border-radius:11px;font-family:'Inter',sans-serif;font-size:15px;color:var(--ink);background:var(--mist);}
+  .r-remove{border:0;background:none;color:var(--teal-deep);font-size:13px;font-weight:600;cursor:pointer;text-transform:none;letter-spacing:0;}
+  .r-add{width:100%;padding:12px;border:1.5px dashed var(--teal);border-radius:12px;background:var(--paper);color:var(--teal-deep);font-family:'Inter',sans-serif;font-size:14.5px;font-weight:600;cursor:pointer;}
+  @media (min-width:560px){ .roster-row .r-grid{display:grid;grid-template-columns:1fr 1fr;column-gap:12px;} }
   .upload-zone{border:1.5px dashed var(--mist-line);border-radius:12px;padding:26px 16px;text-align:center;cursor:pointer;}
   .upload-zone:hover{border-color:var(--teal);}
   .upload-list{margin-top:12px;font-size:13px;color:var(--slate);}
@@ -542,6 +556,10 @@
 
     if (q.type === 'upload'){
       renderUpload(c, q);
+    } else if (q.type === 'address'){
+      renderAddress(c, q, prior);
+    } else if (q.type === 'roster'){
+      renderRoster(c, q, prior);
     } else if (q.type === 'text' || q.type === 'number'){
       renderFreeText(c, q, prior);
       if (q.type === 'number') renderUnsure(c, q);
@@ -619,13 +637,13 @@
     btn.className = 'unsure-btn' + (on ? ' on' : '');
     btn.setAttribute('data-key', 'unsure');
     btn.textContent = isChoice
-      ? (on ? '\u2713 Marked as not sure \u2014 tap to undo' : 'I\u2019m not sure \u2014 let me explain in my own words')
-      : (on ? '\u2713 Adding a note \u2014 tap to remove' : 'I\u2019m not sure \u2014 let me explain in my own words');
+      ? (on ? '\u2713 Marked as not sure. Tap to undo' : 'I\u2019m not sure: let me explain in my own words')
+      : (on ? '\u2713 Adding a note. Tap to remove' : 'I\u2019m not sure: let me explain in my own words');
     c.appendChild(btn);
 
     const box = document.createElement('div');
     box.className = 'unsure-box' + (on ? ' show' : '');
-    box.innerHTML = '<label>Tell us what you do know, or what is confusing. A sentence is plenty \u2014 we will follow up with you.</label>';
+    box.innerHTML = '<label>Tell us what you do know, or what is confusing. A sentence is plenty. We will follow up with you.</label>';
     const ta = document.createElement('textarea');
     ta.className = 'freetext'; ta.rows = 3;
     ta.placeholder = 'For example: \u201cI think my job had a retirement plan, but I\u2019m not sure which kind.\u201d';
@@ -695,6 +713,121 @@
     });
     c.appendChild(el);
     setTimeout(() => el.focus(), 60);
+  }
+
+  // ---- Home address (#36b) ----
+  // The client types; after a short pause the server suggests matching
+  // addresses (Google's geocoder, server side, no key in this page). Picking
+  // one fills the answer; typing it in full is fine too. The server then sets
+  // the state and county on the client record from the saved answer.
+  function renderAddress(c, q, prior){
+    const el = document.createElement('input');
+    el.type = 'text'; el.className = 'freetext'; el.autocomplete = 'street-address';
+    el.placeholder = 'Start typing: house number and street';
+    if (prior) el.value = String(prior.answer || '');
+    const list = document.createElement('div'); list.className = 'addr-list'; list.style.display = 'none';
+    const note = document.createElement('div'); note.className = 'addr-note';
+    let timer = null, seq = 0;
+    const setAnswer = v => { if (v) answers[q.id] = { answer: v, weight: q.weight, text: q.text }; else delete answers[q.id]; };
+    el.addEventListener('input', () => {
+      const v = el.value.trim();
+      setAnswer(v);
+      clearTimeout(timer);
+      if (v.length < 6 || !/\d/.test(v) || !/\s/.test(v)) { list.style.display = 'none'; return; }
+      timer = setTimeout(() => {
+        const mine = ++seq;
+        apiPost('suggestAddress', { token: TOKEN, sessionKey: SESSION_KEY, query: v }).then(res => {
+          if (mine !== seq) return;               // a newer lookup is on its way
+          const s = (res && res.ok && res.suggestions) || [];
+          list.innerHTML = '';
+          s.forEach(a => {
+            const b = document.createElement('button');
+            b.type = 'button'; b.className = 'addr-opt'; b.textContent = a.label;
+            b.addEventListener('click', () => {
+              el.value = a.label; setAnswer(a.label);
+              list.style.display = 'none';
+              note.textContent = a.county ? 'Got it: ' + a.county + (a.state === 'MD' && !/City$/.test(a.county) ? ' County' : '') + ', ' + a.state + '.' : '';
+            });
+            list.appendChild(b);
+          });
+          list.style.display = s.length ? 'block' : 'none';
+        }).catch(() => { list.style.display = 'none'; });
+      }, 450);
+    });
+    c.appendChild(el); c.appendChild(list); c.appendChild(note);
+    setTimeout(() => el.focus(), 60);
+  }
+
+  // ---- Roster: one row per person or account (#36b) ----
+  // Columns come from the question's options ("Label~text|year|money" or
+  // "Label~Choice A,Choice B"). Saved as readable text, one line per row:
+  // "First name: Emma; Year born: 2015; ..." (ClientDetails.gs reads it).
+  function rosterSpec(q){
+    return (q.options || []).map(o => {
+      const p = String(o).split('~'), kind = (p[1] || 'text').trim();
+      return kind.indexOf(',') > -1 ? { label: p[0].trim(), kind: 'choice', choices: kind.split(',').map(x => x.trim()) } : { label: p[0].trim(), kind: kind };
+    });
+  }
+  function rosterParse(text){
+    return String(text || '').split(/\r?\n/).map(line => {
+      const row = {};
+      line.split(/;\s+|\s\|\s/).forEach(part => { const i = part.indexOf(': '); if (i > 0) row[part.slice(0, i).trim()] = part.slice(i + 2).trim(); });
+      return row;
+    }).filter(r => Object.keys(r).length);
+  }
+  function rosterFormat(spec, rows){
+    return rows.map(r => spec.filter(c => String(r[c.label] || '').trim())
+      .map(c => c.label + ': ' + String(r[c.label]).replace(/\s*[;|\r\n]+\s*/g, ' ').trim()).join('; '))
+      .filter(Boolean).join('\n');
+  }
+  function renderRoster(c, q, prior){
+    const spec = rosterSpec(q);
+    const rows = prior ? rosterParse(prior.answer) : [];
+    if (!rows.length) rows.push({});
+    const noun = q.id === 'R05' ? 'account' : 'person';
+    const wrap = document.createElement('div');
+    const save = () => {
+      const v = rosterFormat(spec, rows);
+      if (v) answers[q.id] = { answer: v, weight: q.weight, text: q.text }; else delete answers[q.id];
+    };
+    const paint = () => {
+      wrap.innerHTML = '';
+      rows.forEach((r, i) => {
+        const box = document.createElement('div'); box.className = 'roster-row';
+        box.innerHTML = '<div class="r-head"><span>' + (noun === 'account' ? 'Account ' : 'Person ') + (i + 1) + '</span></div><div class="r-grid"></div>';
+        if (rows.length > 1){
+          const rm = document.createElement('button'); rm.type = 'button'; rm.className = 'r-remove'; rm.textContent = 'Remove';
+          rm.addEventListener('click', () => { rows.splice(i, 1); save(); paint(); });
+          box.querySelector('.r-head').appendChild(rm);
+        }
+        const grid = box.querySelector('.r-grid');
+        spec.forEach(col => {
+          const cell = document.createElement('div');
+          const lab = document.createElement('label'); lab.textContent = col.label; cell.appendChild(lab);
+          let input;
+          if (col.kind === 'choice'){
+            input = document.createElement('select');
+            input.innerHTML = '<option value="">Choose</option>' + col.choices.map(ch => '<option' + (r[col.label] === ch ? ' selected' : '') + '>' + escapeHtml(ch) + '</option>').join('');
+          } else {
+            input = document.createElement('input'); input.className = 'freetext';
+            input.type = 'text';
+            if (col.kind === 'year'){ input.inputMode = 'numeric'; input.maxLength = 4; input.placeholder = 'e.g. 2015'; }
+            if (col.kind === 'money'){ input.inputMode = 'decimal'; input.placeholder = 'e.g. 50,000'; }
+            input.value = r[col.label] || '';
+          }
+          input.setAttribute('aria-label', col.label + ', ' + noun + ' ' + (i + 1));
+          input.addEventListener(col.kind === 'choice' ? 'change' : 'input', () => { r[col.label] = input.value.trim(); save(); });
+          cell.appendChild(input); grid.appendChild(cell);
+        });
+        wrap.appendChild(box);
+      });
+      const add = document.createElement('button'); add.type = 'button'; add.className = 'r-add';
+      add.textContent = '+ Add another ' + noun;
+      add.addEventListener('click', () => { rows.push({}); paint(); });
+      wrap.appendChild(add);
+    };
+    paint();
+    c.appendChild(wrap);
   }
 
   function renderUpload(c, q){
@@ -921,9 +1054,9 @@
     const vis = visibleQuestions();
     const q = vis[qIndex];
     if (!q) { finishUp(); return; }
-    const optional = q.type === 'upload' || q.type === 'text' || q.type === 'number';
+    const optional = q.type === 'upload' || q.type === 'text' || q.type === 'number' || q.type === 'address' || q.type === 'roster';
     if (!optional && !answers[q.id]){
-      showFormError('Please choose an answer \u2014 or tap \u201cI\u2019m not sure\u201d below the choices.');
+      showFormError('Please choose an answer, or tap \u201cI\u2019m not sure\u201d below the choices.');
       return;
     }
     const toSave = [{
