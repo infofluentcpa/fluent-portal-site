@@ -239,6 +239,9 @@
 (function(){
   'use strict';
   const API = 'https://script.google.com/macros/s/AKfycbwvdBYxMwy4GnPEEzrUElh9-vsa7wSZrQsMXdBbpeYODeu5V0MzbPyxhXn2Ol9G0RuH/exec';
+  // Staff "Preview as client" (Code.gs doGet ?view=preview): questions come from the console's
+  // own server call, every save is switched off, and a banner says so.
+  const PREVIEW = window.FP_PREVIEW || null;
   const params = new URLSearchParams(window.location.search);
   // Google Sites' embed does NOT forward query params from the top-level
   // page into this iframe — so a URL like portal.fluentcpa.com/?t=abc
@@ -270,14 +273,30 @@
     show('screen-message');
   }
 
+  // ---- Staff preview: the questions from the console's server call; nothing is ever saved ----
+  let PREVIEW_DOCS = null;
+  function previewCall(action){
+    if (action === 'getQuestions') {
+      return new Promise((resolve, reject) => {
+        google.script.run.withSuccessHandler(res => { if (res) PREVIEW_DOCS = res.documents || []; resolve(res); })
+          .withFailureHandler(reject).adminPreviewQuestions(PREVIEW.client, PREVIEW.pass);
+      });
+    }
+    if (action === 'refreshChecklist') return Promise.resolve({ ok: true, documents: PREVIEW_DOCS || [] });
+    if (action === 'suggestAddress') return Promise.resolve({ ok: true, suggestions: [] });
+    return Promise.resolve({ ok: true });   // saveAnswers, submit: switched off
+  }
+
   // ---- API helpers ----
   // GET is a normal request. POST is sent as text/plain to dodge Apps
   // Script's lack of CORS-preflight support — see STEP-2-SETUP.md.
   function apiGet(action, extraParams){
+    if (PREVIEW) return previewCall(action);
     const qs = new URLSearchParams(Object.assign({ action }, extraParams || {}));
     return fetch(API + '?' + qs.toString()).then(r => r.json());
   }
   function apiPost(action, body){
+    if (PREVIEW) return previewCall(action);
     return fetch(API, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
@@ -289,7 +308,7 @@
   // If a token arrived via the URL (direct/testing access), skip straight
   // to validating it. Otherwise — the normal case once embedded in Sites —
   // ask the client to paste the code from their email.
-  if (TOKEN){
+  if (TOKEN || PREVIEW){
     boot();
   } else {
     show('screen-code');
@@ -319,6 +338,16 @@
   let PAST_CODE = false;
 
   function boot(){
+  if (PREVIEW){
+    // Staff preview: no link or code; straight to the questions, with a banner. Nothing is saved.
+    const bar = document.createElement('div');
+    bar.style.cssText = 'position:sticky;top:0;z-index:50;background:#8A6100;color:#fff;font:600 13px Inter,Arial,sans-serif;padding:9px 14px;text-align:center;';
+    bar.textContent = 'Staff preview: this is what the client sees' + (PREVIEW.pass === 2 ? ' in the follow-up' : '') + '. Nothing you enter here is saved or sent.';
+    document.body.insertBefore(bar, document.body.firstChild);
+    // Next tick: boot() runs before the variables loadQuestions() uses are declared further down.
+    setTimeout(loadQuestions, 0);
+    return;
+  }
   // Most clients need the 6-digit code anyway, so show that screen at once
   // and check the link in the background — the client is busy finding the
   // code while Google wakes the script, instead of watching a spinner.
