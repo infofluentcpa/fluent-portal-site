@@ -355,7 +355,7 @@
   // Focus on the next tick: boot() runs before the code boxes are wired up
   // further down this script (calling it directly threw and stopped the page).
   if (needsCodeLikely){ show('screen-access'); setTimeout(focusFirstCodeBox, 0); }
-  apiGet('validateToken', { token: TOKEN }).then(res => {
+  apiGet('validateToken', SESSION_KEY ? { token: TOKEN, sessionKey: SESSION_KEY } : { token: TOKEN }).then(res => {
     if (PAST_CODE) return;
     if (!res.ok){
       const copy = {
@@ -373,10 +373,15 @@
       document.getElementById('access-lead').textContent =
         (res.firstName ? 'Hi ' + res.firstName + ', we' : 'We') +
         ' emailed a 6-digit code separately from your link. Enter it below to open your questionnaire.';
-      if (!needsCodeLikely){ show('screen-access'); focusFirstCodeBox(); }
+      if (!needsCodeLikely){
+        // This tab's saved key is no longer accepted: the code is needed again.
+        SESSION_KEY = null;
+        try { sessionStorage.removeItem('ff_session_' + TOKEN); } catch (e) {}
+        show('screen-access'); focusFirstCodeBox();
+      }
 
     } else {
-      SESSION_KEY = res.sessionKey;
+      // This tab entered the code earlier and its key is still good (SESSION_KEY already set).
       loadQuestions();
     }
   }).catch(() => { if (!PAST_CODE) message('Connection problem', 'We couldn’t reach the server. Check your connection and reload the page.'); });
@@ -456,7 +461,11 @@
         Object.keys(res.priorAnswers).forEach(id => {
           if (answers[id]) return;
           const noteFor = /_NOTE$/.test(id) ? id.slice(0, -5) : '';
-          answers[id] = { answer: res.priorAnswers[id], weight: 0,
+          // Always text (a saved "2" must match the choice "2"), lists stay lists.
+          const raw = res.priorAnswers[id];
+          const val = Array.isArray(raw) ? raw.map(String) : String(raw);
+          lastSent[id] = JSON.stringify(val);
+          answers[id] = { answer: val, weight: 0,
                           text: noteFor ? 'Client note on: ' + (byId[noteFor] ? byId[noteFor].text : noteFor) : '' };
           if (noteFor) notesSent[id] = true;
           if (byId[id]) mine[id] = true;
@@ -469,11 +478,12 @@
       RESUMED = Object.keys(mine).length > 0;
       const firstOpen = vis.findIndex(q => !answers[q.id]);
       qIndex = !RESUMED ? 0 : (firstOpen === -1 ? vis.length - 1 : firstOpen);
+      RESUME_AT = RESUMED ? (vis[qIndex] && vis[qIndex].id) : null;
       show('screen-form');
       renderQuestion();
     }).catch(() => message('Connection problem', 'We couldn’t reach the server. Check your connection and reload the page. Your answers so far are saved.'));
   }
-  let RESUMED = false, WELCOMED_BACK = false;
+  let RESUMED = false, WELCOMED_BACK = false, RESUME_AT = null;
 
   // ---- Conditional visibility ----
   // A question with a show_if expression only appears once that condition
@@ -532,8 +542,9 @@
     // The first screen says why the questions matter: clients answer more
     // carefully when they see it's for advice about them (AH, 2026-10-09).
     // Explains, never steers an answer.
-    if (RESUMED && !WELCOMED_BACK){
-      WELCOMED_BACK = true;
+    // Shown on the screen they resume on until they move on (tapping an answer redraws the
+    // screen, which used to make it vanish at once).
+    if (RESUMED && !WELCOMED_BACK && q.id === RESUME_AT){
       const wb = document.createElement('div');
       wb.className = 'section-intro';
       wb.style.marginBottom = '14px';
@@ -762,7 +773,10 @@
       const v = el.value.trim();
       setAnswer(v);
       clearTimeout(timer);
-      if (v.length < 6 || !/\d/.test(v) || !/\s/.test(v)) { list.style.display = 'none'; return; }
+      // Start as soon as there is a house number and the start of a street ("12 Ma"):
+      // each lookup takes a second or two to come back, so asking early is what makes it feel quick.
+      if (v.length < 4 || !/^\s*\d/.test(v) || !/\d+\s+\S{2}/.test(v)) { list.style.display = 'none'; note.textContent = ''; return; }
+      if (!list.children.length) note.textContent = 'Looking up your address…';
       timer = setTimeout(() => {
         const mine = ++seq;
         apiPost('suggestAddress', { token: TOKEN, sessionKey: SESSION_KEY, query: v }).then(res => {
@@ -780,8 +794,9 @@
             list.appendChild(b);
           });
           list.style.display = s.length ? 'block' : 'none';
-        }).catch(() => { list.style.display = 'none'; });
-      }, 450);
+          if (mine === seq) note.textContent = s.length ? '' : (v.length > 12 ? 'No match yet: keep typing, or type the full address.' : '');
+        }).catch(() => { list.style.display = 'none'; note.textContent = ''; });
+      }, 200);
     });
     c.appendChild(el); c.appendChild(list); c.appendChild(note);
     setTimeout(() => el.focus(), 60);
@@ -1076,6 +1091,8 @@
   }
 
   document.getElementById('back-btn').addEventListener('click', () => {
+    saveCurrent();
+    WELCOMED_BACK = true;
     if (qIndex > 0){ qIndex--; renderQuestion(); }
   });
 
@@ -1104,6 +1121,8 @@
       toSave.push({ id: noteId, text: 'Client note on: ' + q.text, answer: '', weight: 0 });
     }
     apiPost('saveAnswers', { token: TOKEN, sessionKey: SESSION_KEY, answers: toSave });
+    toSave.forEach(a => { lastSent[a.id] = JSON.stringify(a.answer); });
+    WELCOMED_BACK = true;
 
     // Recompute after saving — this answer may have revealed or hidden
     // follow-up questions further down the list.
@@ -1115,6 +1134,38 @@
       finishUp();
     }
   });
+
+  // ---- Autosave: what is on the current screen is saved without pressing Next ----
+  // (2026-10-15: answers typed on the last screen before closing were lost.) Only what
+  // changed since it was last sent; a closing tab sends with keepalive so it still arrives.
+  const lastSent = {};
+  let autosaveTimer = null;
+  function currentPayload(){
+    const q = visibleQuestions()[qIndex];
+    if (!q || q.type === 'upload') return [];
+    const out = [];
+    const cur = answers[q.id] ? answers[q.id].answer : '';
+    if (JSON.stringify(cur) !== (lastSent[q.id] === undefined ? JSON.stringify('') : lastSent[q.id])) out.push({ id: q.id, text: q.text, answer: cur, weight: q.weight });
+    const noteId = q.id + '_NOTE';
+    const note = answers[noteId] ? answers[noteId].answer : '';
+    if (JSON.stringify(note) !== (lastSent[noteId] === undefined ? JSON.stringify('') : lastSent[noteId])) out.push({ id: noteId, text: 'Client note on: ' + q.text, answer: note, weight: 0 });
+    return out;
+  }
+  function saveCurrent(closing){
+    clearTimeout(autosaveTimer);
+    if (PREVIEW || !SESSION_KEY || !TOKEN) return;
+    const list = currentPayload();
+    if (!list.length) return;
+    list.forEach(a => { lastSent[a.id] = JSON.stringify(a.answer); if (/_NOTE$/.test(a.id) && a.answer) notesSent[a.id] = true; });
+    const body = JSON.stringify({ action: 'saveAnswers', token: TOKEN, sessionKey: SESSION_KEY, answers: list });
+    try {
+      fetch(API, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: body, keepalive: !!closing }).catch(() => {});
+    } catch (e) { /* the Next button saves it anyway */ }
+  }
+  function scheduleSave(){ clearTimeout(autosaveTimer); autosaveTimer = setTimeout(saveCurrent, 1200); }
+  ['input', 'change', 'click'].forEach(ev => document.getElementById('q-container').addEventListener(ev, scheduleSave, true));
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') saveCurrent(true); });
+  window.addEventListener('pagehide', () => saveCurrent(true));
 
   // The branded summary, offered for download. The same file was emailed;
   // if anything about it failed, the thank-you screen simply stays as is.
