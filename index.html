@@ -67,6 +67,7 @@
 
   .section-intro{background:var(--teal-wash);border-radius:14px;padding:22px 20px;margin-bottom:6px;}
   .section-intro .eyebrow{font-family:'Space Grotesk',sans-serif;font-size:11.5px;font-weight:600;letter-spacing:.9px;text-transform:uppercase;color:var(--teal);margin-bottom:7px;}
+  #screen-status .eyebrow{font-family:'Space Grotesk',sans-serif;font-size:11.5px;font-weight:600;letter-spacing:.9px;text-transform:uppercase;color:var(--teal);margin-bottom:7px;}
   .section-intro h2{font-family:'Space Grotesk',sans-serif;font-size:21px;font-weight:600;color:var(--ink);margin:0 0 9px;line-height:1.25;}
   .section-intro p{font-size:14.5px;color:var(--slate);line-height:1.55;margin:0;}
 
@@ -213,7 +214,7 @@
       <section class="screen" id="screen-form">
         <div class="progress-label"><span id="progress-label">Question 1</span><span id="progress-pct"></span></div>
         <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
-        <div class="save-note">✓ Saved as you go. You can close this page and come back any time with the link in your email.</div>
+        <div class="save-note" id="save-note">✓ Saved as you go. You can close this page and come back any time with the link in your email.</div>
         <div class="error-box" id="form-error"></div>
         <div class="q-block" id="q-container"></div>
         <div class="nav-row">
@@ -222,11 +223,21 @@
         </div>
       </section>
 
+      <section class="screen" id="screen-status">
+        <div class="eyebrow" id="st-eyebrow">Your return</div>
+        <h1 id="st-title">Where things stand</h1>
+        <p class="lead" id="st-text"></p>
+        <div id="st-timeline" style="margin:18px 0;"></div>
+        <div id="st-docs"></div>
+        <p class="save-note" id="st-contact" style="margin-top:22px;"></p>
+      </section>
+
       <section class="screen" id="screen-done">
         <div class="complete-wrap">
           <div class="check"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M5 12.5l4.5 4.5L19 7" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
           <h1>You're all set</h1>
           <p>Thank you. We have your answers. Fluent Financials will review them and reach out if we have any questions.</p>
+          <p style="margin-top:8px;">To see where your return is at any time, open the same link from your email and enter your code.</p>
           <div id="done-copy"></div>
         </div>
       </section>
@@ -336,6 +347,52 @@
   // Set once the client is past the code screen, so a slow link check that
   // answers late can never pull them back out of the questionnaire.
   let PAST_CODE = false;
+  // The questionnaire was already sent: the link shows where the return is (#62).
+  let SUBMITTED = false;
+
+  // ---- Status page: where the return is, what is still needed ----
+  function loadStatus(){
+    PAST_CODE = true;
+    show('screen-loading');
+    apiGet('getStatus', { token: TOKEN, sessionKey: SESSION_KEY }).then(res => {
+      if (!res || !res.ok){ message('Please open your link again', 'For your security, please reopen the link from your email and enter your code.'); return; }
+      const s = res.status;
+      document.getElementById('st-eyebrow').textContent = (res.firstName ? 'Hi ' + res.firstName + ': ' : '') + res.returnLabel;
+      document.getElementById('st-title').textContent = s.title;
+      document.getElementById('st-text').textContent = s.text;
+      const tl = document.getElementById('st-timeline'); tl.innerHTML = '';
+      s.timeline.forEach(t => {
+        const row = document.createElement('div');
+        row.style.cssText = 'display:flex;align-items:center;gap:10px;padding:6px 0;font-size:15px;' + (t.done ? '' : 'color:var(--slate);');
+        const dot = document.createElement('span');
+        dot.style.cssText = 'width:20px;height:20px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:12px;flex:none;' +
+          (t.done ? 'background:var(--teal);color:#fff;' : 'border:2px solid var(--mist-line);');
+        dot.textContent = t.done ? '✓' : '';
+        const lab = document.createElement('span'); lab.textContent = t.label;
+        row.appendChild(dot); row.appendChild(lab); tl.appendChild(row);
+      });
+      const docs = document.getElementById('st-docs'); docs.innerHTML = '';
+      if (s.needed.length || s.helpful.length){
+        const h = document.createElement('h2'); h.style.fontSize = '18px'; h.textContent = 'Documents we still need'; docs.appendChild(h);
+        if (s.docsDue){ const p = document.createElement('p'); p.className = 'q-help'; p.textContent = 'Please send them by ' + s.docsDue + '.'; docs.appendChild(p); }
+        const ul = document.createElement('ul'); ul.style.cssText = 'padding-left:20px;margin:6px 0;';
+        s.needed.forEach(l => { const li = document.createElement('li'); li.textContent = l; ul.appendChild(li); });
+        docs.appendChild(ul);
+        if (s.helpful.length){
+          const p = document.createElement('p'); p.className = 'q-help'; p.textContent = 'Also helpful if you have them: ' + s.helpful.join(', ') + '.'; docs.appendChild(p);
+        }
+        if (res.uploads && res.uploads.url){
+          const a = document.createElement('a'); a.className = 'btn btn-primary'; a.href = res.uploads.url; a.target = '_blank'; a.rel = 'noopener';
+          a.style.marginTop = '12px'; a.textContent = 'Upload documents to ' + res.uploads.name; docs.appendChild(a);
+          if (res.uploads.username){ const u = document.createElement('p'); u.className = 'q-help'; u.textContent = 'Your secure portal username: ' + res.uploads.username; docs.appendChild(u); }
+          if (res.uploads.provider){ const pv = document.createElement('p'); pv.className = 'save-note'; pv.textContent = res.uploads.provider; docs.appendChild(pv); }
+        }
+      }
+      const c = res.contact || {};
+      document.getElementById('st-contact').textContent = 'Questions? ' + (c.phone ? 'Call us at ' + c.phone + ' or email ' : 'Email ') + (c.email || '') + '.';
+      show('screen-status');
+    }).catch(() => message('Connection problem', 'We couldn’t reach the server. Check your connection and reload the page.'));
+  }
 
   function boot(){
   if (PREVIEW){
@@ -369,6 +426,7 @@
         copy[res.error] || 'Something went wrong opening this link.');
       return;
     }
+    SUBMITTED = !!res.submitted;
     if (res.needsPasscode){
       document.getElementById('access-lead').textContent =
         (res.firstName ? 'Hi ' + res.firstName + ', we' : 'We') +
@@ -382,7 +440,7 @@
 
     } else {
       // This tab entered the code earlier and its key is still good (SESSION_KEY already set).
-      loadQuestions();
+      if (SUBMITTED) loadStatus(); else loadQuestions();
     }
   }).catch(() => { if (!PAST_CODE) message('Connection problem', 'We couldn’t reach the server. Check your connection and reload the page.'); });
   } // end boot()
@@ -422,8 +480,15 @@
         return;
       }
       SESSION_KEY = res.sessionKey;
-      sessionStorage.setItem('ff_session_' + TOKEN, SESSION_KEY);
+      try { sessionStorage.setItem('ff_session_' + TOKEN, SESSION_KEY); } catch (e) {}
+      // Their session ended part-way (4 hours): back to the same screen, unsaved answers sent now.
+      if (REVERIFY){ REVERIFY = false; show('screen-form'); setSaveState('ok'); flushSaves(); return; }
+      if (SUBMITTED){ loadStatus(); return; }
       loadQuestions();
+    }).catch(() => {
+      btn.disabled = false; btn.textContent = 'Verify & continue';
+      errBox.textContent = 'We couldn’t reach the server. Check your connection and try again.';
+      errBox.classList.add('show');
     });
   });
 
@@ -472,6 +537,9 @@
         });
       }
       if (!questions.length){ message('Nothing to answer', 'There’s nothing pending for you right now.'); return; }
+      // Same as last year: screens they already confirmed stay skipped; reminders by question.
+      (res.confirmedSame || []).forEach(id => { CONFIRMED_SKIP[id] = true; });
+      HINTS = res.hints || {};
       // Resume at the first question still unanswered (or the last one, so
       // finishing stays the client's choice — never an automatic submit).
       const vis = visibleQuestions();
@@ -480,10 +548,61 @@
       qIndex = !RESUMED ? 0 : (firstOpen === -1 ? vis.length - 1 : firstOpen);
       RESUME_AT = RESUMED ? (vis[qIndex] && vis[qIndex].id) : null;
       show('screen-form');
-      renderQuestion();
+      if (res.lastYear && res.lastYear.length && !PREVIEW_SKIP_SAME) renderSameAsLastYear(res.lastYear, byId);
+      else renderQuestion();
     }).catch(() => message('Connection problem', 'We couldn’t reach the server. Check your connection and reload the page. Your answers so far are saved.'));
   }
   let RESUMED = false, WELCOMED_BACK = false, RESUME_AT = null;
+  const CONFIRMED_SKIP = {};   // question ids confirmed "same as last year": their screens are skipped
+  let HINTS = {};              // question id → a reminder line ("Last year's return showed …")
+  const PREVIEW_SKIP_SAME = false;
+
+  // ---- Same as last year: one screen instead of several (returning clients) ----
+  // Only the client's own answers from last year, never anything inferred. "Yes, all the same"
+  // saves them as this year's answers and skips those screens; "Something changed" shows the
+  // screens filled in with last year's answers to change.
+  function renderSameAsLastYear(items, byId){
+    const c = document.getElementById('q-container');
+    const nav = [document.getElementById('next-btn'), document.getElementById('back-btn')];
+    nav.forEach(b => { if (b) b.style.display = 'none'; });
+    c.innerHTML = '';
+    const box = document.createElement('div'); box.className = 'section-intro';
+    box.innerHTML = '<div class="eyebrow">Welcome back</div><h2>Is this still right?</h2><p>Here is what you told us last year. If nothing has changed, you can skip these questions.</p>';
+    c.appendChild(box);
+    const list = document.createElement('div');
+    items.forEach(it => {
+      const row = document.createElement('div'); row.style.cssText = 'border:1.5px solid var(--mist-line);border-radius:12px;padding:10px 14px;margin:8px 0;background:var(--paper);';
+      const q = document.createElement('div'); q.style.cssText = 'font-size:13px;color:var(--slate);'; q.textContent = it.question;
+      const a = document.createElement('div'); a.style.cssText = 'font-weight:600;margin-top:2px;white-space:pre-wrap;'; a.textContent = it.view;
+      row.appendChild(q); row.appendChild(a); list.appendChild(row);
+    });
+    c.appendChild(list);
+    const done = () => { nav.forEach(b => { if (b) b.style.display = ''; }); };
+    const same = document.createElement('button'); same.type = 'button'; same.className = 'btn btn-primary'; same.style.marginTop = '14px';
+    same.textContent = 'Yes, all the same';
+    same.addEventListener('click', () => {
+      const save = [];
+      items.forEach(it => {
+        const q = byId[it.id] || { text: it.question, weight: 0 };
+        answers[it.id] = { answer: it.answer, weight: q.weight || 0, text: 'Same as last year: ' + q.text };
+        lastSent[it.id] = JSON.stringify(it.answer);
+        CONFIRMED_SKIP[it.id] = true;
+        save.push({ id: it.id, text: 'Same as last year: ' + q.text, answer: it.answer, weight: q.weight || 0 });
+      });
+      queueSave(save);
+      const vis = visibleQuestions(); const open = vis.findIndex(q => !answers[q.id]);
+      qIndex = open === -1 ? Math.max(0, vis.length - 1) : open;
+      done(); renderQuestion();
+    });
+    const changed = document.createElement('button'); changed.type = 'button'; changed.className = 'btn'; changed.style.cssText = 'margin-top:10px;background:var(--mist);color:var(--ink);';
+    changed.textContent = 'Something changed';
+    changed.addEventListener('click', () => {
+      // Filled in on their screens, saved only when they press Next there (it is their answer then).
+      items.forEach(it => { const q = byId[it.id] || { text: it.question, weight: 0 }; answers[it.id] = { answer: it.answer, weight: q.weight || 0, text: q.text }; });
+      done(); renderQuestion();
+    });
+    c.appendChild(same); c.appendChild(changed);
+  }
 
   // ---- Conditional visibility ----
   // A question with a show_if expression only appears once that condition
@@ -510,7 +629,7 @@
     }
   }
   function visibleQuestions(){
-    return questions.filter(isVisible);
+    return questions.filter(q => isVisible(q) && !CONFIRMED_SKIP[q.id]);
   }
 
   // stay = { key, top, y }: a redraw caused by tapping something on the SAME question keeps
@@ -585,6 +704,7 @@
 
     const h2 = document.createElement('h2'); h2.textContent = q.text; c.appendChild(h2);
     if (q.help){ const p = document.createElement('p'); p.className = 'q-help'; p.textContent = q.help; c.appendChild(p); }
+    if (HINTS[q.id]){ const p = document.createElement('p'); p.className = 'q-help'; p.style.color = 'var(--teal-deep)'; p.textContent = HINTS[q.id]; c.appendChild(p); }
     const optHelp = q.optionHelp || {};
     if (Object.keys(optHelp).length){
       const hint = document.createElement('p'); hint.className = 'opt-hint';
@@ -1120,8 +1240,8 @@
     } else if (notesSent[noteId]){
       toSave.push({ id: noteId, text: 'Client note on: ' + q.text, answer: '', weight: 0 });
     }
-    apiPost('saveAnswers', { token: TOKEN, sessionKey: SESSION_KEY, answers: toSave });
     toSave.forEach(a => { lastSent[a.id] = JSON.stringify(a.answer); });
+    queueSave(toSave);
     WELCOMED_BACK = true;
 
     // Recompute after saving — this answer may have revealed or hidden
@@ -1157,10 +1277,58 @@
     const list = currentPayload();
     if (!list.length) return;
     list.forEach(a => { lastSent[a.id] = JSON.stringify(a.answer); if (/_NOTE$/.test(a.id) && a.answer) notesSent[a.id] = true; });
-    const body = JSON.stringify({ action: 'saveAnswers', token: TOKEN, sessionKey: SESSION_KEY, answers: list });
+    if (!closing) { queueSave(list); return; }
+    // The tab is closing: one last send of everything not yet confirmed, which survives the page closing.
+    list.forEach(a => { pendingSaves[a.id] = a; });
+    const all = Object.keys(pendingSaves).map(k => pendingSaves[k]);
     try {
-      fetch(API, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: body, keepalive: !!closing }).catch(() => {});
-    } catch (e) { /* the Next button saves it anyway */ }
+      fetch(API, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ action: 'saveAnswers', token: TOKEN, sessionKey: SESSION_KEY, answers: all }), keepalive: true }).catch(() => {});
+    } catch (e) { /* nothing more can be done as the page closes */ }
+  }
+
+  // ---- Every save is checked: retried until the server confirms it, never lost quietly ----
+  // (2026-10-15 audit: Next sent the answer and moved on without looking at the reply.)
+  const pendingSaves = {};          // id -> the answer object waiting for confirmation
+  let saving = null, saveTries = 0, retryTimer = null, REVERIFY = false;
+  function setSaveState(state){
+    const n = document.getElementById('save-note'); if (!n) return;
+    if (state === 'retry'){ n.style.color = '#8A6100'; n.textContent = 'Not saved yet: checking your connection. Keep going; we will keep trying.'; }
+    else { n.style.color = ''; n.textContent = '✓ Saved as you go. You can close this page and come back any time with the link in your email.'; }
+  }
+  function queueSave(list){
+    if (PREVIEW) return;
+    list.forEach(a => { pendingSaves[a.id] = a; });
+    flushSaves();
+  }
+  function flushSaves(){
+    if (PREVIEW || !SESSION_KEY) return Promise.resolve(!Object.keys(pendingSaves).length);
+    if (saving) return saving.then(() => flushSaves());
+    const list = Object.keys(pendingSaves).map(k => pendingSaves[k]);
+    if (!list.length) return Promise.resolve(true);
+    clearTimeout(retryTimer);
+    saving = apiPost('saveAnswers', { token: TOKEN, sessionKey: SESSION_KEY, answers: list }).then(res => {
+      saving = null;
+      if (res && res.ok){
+        list.forEach(a => { if (pendingSaves[a.id] === a) delete pendingSaves[a.id]; });   // a newer change stays pending
+        saveTries = 0; setSaveState('ok');
+        return Object.keys(pendingSaves).length ? flushSaves() : true;
+      }
+      if (res && (res.error === 'session_expired' || res.error === 'unauthorized')){
+        // Their 4-hour session ended: ask for the code again; nothing typed is lost.
+        REVERIFY = true;
+        document.getElementById('access-lead').textContent = 'For your security, please enter your 6-digit code again to keep going. Your answers are kept.';
+        show('screen-access'); focusFirstCodeBox();
+        return false;
+      }
+      throw new Error((res && (res.message || res.error)) || 'not saved');
+    }).catch(() => {
+      saving = null; saveTries++;
+      setSaveState('retry');
+      retryTimer = setTimeout(flushSaves, Math.min(30000, 1000 * Math.pow(2, saveTries)));
+      return false;
+    });
+    return saving;
   }
   function scheduleSave(){ clearTimeout(autosaveTimer); autosaveTimer = setTimeout(saveCurrent, 1200); }
   ['input', 'change', 'click'].forEach(ev => document.getElementById('q-container').addEventListener(ev, scheduleSave, true));
@@ -1193,10 +1361,30 @@
 
   function finishUp(){
     show('screen-loading');
-    apiPost('submit', { token: TOKEN, sessionKey: SESSION_KEY }).then(res => {
-      showCopy(res && res.copy);
-      show('screen-done');
-    });
+    flushSaves().then(() => {
+      if (!PREVIEW && Object.keys(pendingSaves).length){
+        submitProblem('Some of your answers haven’t reached us yet. Check your internet connection, then try again. Nothing you entered is lost.');
+        return;
+      }
+      return apiPost('submit', { token: TOKEN, sessionKey: SESSION_KEY }).then(res => {
+        if (!res || !res.ok){
+          submitProblem(res && (res.error === 'session_expired' || res.error === 'unauthorized')
+            ? 'For your security your session timed out. Please open the link in your email again and enter your code; your answers are saved.'
+            : 'Your answers are saved, but we couldn’t finish sending your questionnaire. Please try again in a moment.');
+          return;
+        }
+        showCopy(res.copy);
+        show('screen-done');
+      });
+    }).catch(() => submitProblem('We couldn’t reach the server. Check your internet connection, then try again. Your answers are saved.'));
+  }
+  function submitProblem(text){
+    message('Not sent yet', text);
+    const body = document.getElementById('msg-body');
+    const again = document.createElement('button');
+    again.className = 'btn btn-primary'; again.type = 'button'; again.style.marginTop = '16px'; again.textContent = 'Try again';
+    again.addEventListener('click', finishUp);
+    body.appendChild(document.createElement('br')); body.appendChild(again);
   }
 
   function escapeHtml(s){
