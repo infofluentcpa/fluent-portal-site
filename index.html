@@ -744,7 +744,13 @@
         }
         row.addEventListener('click', () => {
           if (isMulti){
-            if (selected.has(opt)) selected.delete(opt); else selected.add(opt);
+            // "None of these" and real choices exclude each other: ticking one clears the other kind.
+            if (selected.has(opt)) selected.delete(opt);
+            else {
+              if (isNoneChoice(opt)) selected.clear();
+              else Array.from(selected).forEach(x => { if (isNoneChoice(x)) selected.delete(x); });
+              selected.add(opt);
+            }
             // Picking a real choice replaces a generic "Not sure" we added.
             if (opt !== generic && q.options.indexOf(generic) === -1) selected.delete(generic);
           } else {
@@ -763,6 +769,9 @@
     }
     if (stay) keepInPlace(stay);
   }
+
+  // Same wordings as noneChoice_ in Code.gs.
+  function isNoneChoice(o){ return /^(None\b|Neither$|Nothing changed|No, all are\b)/i.test(String(o).trim()); }
 
   function stayAt(el){ return { key: el.getAttribute('data-key'), top: el.getBoundingClientRect().top, y: window.scrollY }; }
   function keepInPlace(stay){
