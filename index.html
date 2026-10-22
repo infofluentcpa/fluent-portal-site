@@ -147,7 +147,12 @@
   .opt-help{display:none;font-size:14.5px;line-height:1.5;color:var(--teal-deep);margin-top:7px;}
   .option.show-help .opt-help{display:block;}
   .opt-info{flex-shrink:0;width:34px;height:34px;margin:-6px -8px -6px 0;border-radius:50%;border:1.5px solid var(--teal);background:var(--paper);color:var(--teal);font:italic 600 16px/1 Georgia,'Times New Roman',serif;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;}
-  .option.show-help .opt-info{background:var(--teal);color:#fff;}
+  .option.show-help .opt-info{background:#0B57D0;color:#fff;}
+  /* The information icon in the universal information blue (owner, 2026-10-22), filled so it is easy to spot. */
+  .opt-info{background:#1A73E8 !important;border-color:#1A73E8 !important;color:#fff !important;font-style:normal !important;font-weight:700 !important;}
+  .option.show-help .opt-info{background:#0B57D0 !important;border-color:#0B57D0 !important;}
+  .opt-gloss{color:var(--slate);font-size:14px;}
+  .q-note{font-size:14.5px;line-height:1.5;color:#0B3D91;background:#E8F0FE;border-left:3px solid #1A73E8;border-radius:6px;padding:9px 12px;margin:0 0 16px;}
   .unsure-btn{display:block;width:100%;margin:8px 0 0;padding:14px 16px;border:1.5px dashed var(--mist-line);border-radius:12px;background:var(--paper);color:var(--teal-deep);font:500 15.5px/1.4 'Inter',system-ui,sans-serif;text-align:left;cursor:pointer;}
   .unsure-btn.on{border-style:solid;border-color:var(--teal);background:var(--teal-wash);}
   .unsure-box{display:none;margin-top:10px;}
@@ -704,6 +709,10 @@
 
     const h2 = document.createElement('h2'); h2.textContent = q.text; c.appendChild(h2);
     if (q.help){ const p = document.createElement('p'); p.className = 'q-help'; p.textContent = q.help; c.appendChild(p); }
+    // A client who also has a business return with us: whose activity counts (client feedback 2026-10-22).
+    if (q.note){ const p = document.createElement('p'); p.className = 'q-note'; p.textContent = q.note; c.appendChild(p); }
+    // The last screen sends the answers: say so on the button (client feedback 2026-10-22).
+    document.getElementById('next-btn').textContent = qIndex >= vis.length - 1 ? 'Submit my answers' : 'Continue';
     if (HINTS[q.id]){ const p = document.createElement('p'); p.className = 'q-help'; p.style.color = 'var(--teal-deep)'; p.textContent = HINTS[q.id]; c.appendChild(p); }
     const optHelp = q.optionHelp || {};
     if (Object.keys(optHelp).length){
@@ -732,7 +741,8 @@
         row.className = 'option' + (isMulti ? ' multi' : '') + (selected.has(opt) ? ' selected' : '');
         row.setAttribute('data-key', 'opt:' + q.options.indexOf(opt));
         const explain = optHelp[opt];
-        row.innerHTML = '<div class="dot"></div><div class="opt-body"><div class="opt-text">' + escapeHtml(opt) + '</div>' +
+        const gloss = (q.optionGloss || {})[opt];
+        row.innerHTML = '<div class="dot"></div><div class="opt-body"><div class="opt-text">' + escapeHtml(opt) + (gloss ? ' <span class="opt-gloss">(' + escapeHtml(gloss) + ')</span>' : '') + '</div>' +
           (explain ? '<div class="opt-help">' + escapeHtml(explain) + '</div>' : '') + '</div>' +
           (explain ? '<button type="button" class="opt-info" aria-label="What does this mean?">i</button>' : '');
         if (explain){
@@ -1038,8 +1048,8 @@
       const n = document.createElement('div');
       n.style.cssText = 'font-size:12.5px;color:var(--slate);text-align:center;margin-bottom:16px;';
       n.textContent = UPLOADS.username
-        ? 'Opens in a new tab. Your username is ' + UPLOADS.username + '. Sign in with the password you set there, then come back here to continue.'
-        : 'Opens in a new tab. Sign in with your secure portal login, then come back here to continue.' +
+        ? 'Opens in a new tab. Your username is ' + UPLOADS.username + '. Sign in with the password you set there. Uploading can wait: you can press Submit my answers first.'
+        : 'Opens in a new tab. Sign in with your secure portal login. Uploading can wait: you can press Submit my answers first.' +
           (UPLOADS.phone ? ' No login yet? Call us at ' + UPLOADS.phone + ' and we’ll set one up.' : '');
       if (UPLOADS.provider){
         const sp = document.createElement('div');
@@ -1053,7 +1063,7 @@
     const summary = document.createElement('div');
     summary.className = 'doc-summary';
     summary.textContent = DOCS.length
-      ? 'Please upload these through ' + (UPLOADS.name || 'our secure portal') + '. You can come back to this list any time.'
+      ? 'Please upload these through ' + (UPLOADS.name || 'our secure portal') + '.'
       : 'Nothing specific is needed from you based on your answers. If you have something you think we should see, you can send it through ' + (UPLOADS.name || 'our secure portal') + '.';
     wrap.appendChild(summary);
     wrap.appendChild(portalButton());
