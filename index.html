@@ -81,6 +81,7 @@
   .doc-label{font-size:14.5px;font-weight:600;color:var(--ink);line-height:1.35;}
   .doc-item.done .doc-label{color:var(--teal);}
   .doc-help{font-size:12.5px;color:var(--slate);line-height:1.45;margin-top:3px;}
+  .doc-why{font-size:12.5px;color:#1A5E8A;line-height:1.45;margin-top:3px;}
   .doc-req{display:inline-block;font-size:10.5px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;color:#B45309;background:#FEF3C7;padding:2px 7px;border-radius:5px;margin-left:7px;vertical-align:1px;}
   .doc-add{flex-shrink:0;border:none;background:var(--teal);color:#fff;font-family:'Inter',sans-serif;font-size:12.5px;font-weight:600;padding:7px 13px;border-radius:8px;cursor:pointer;}
   .doc-add:hover{background:#0F6C75;}
@@ -381,7 +382,12 @@
         const h = document.createElement('h2'); h.style.fontSize = '18px'; h.textContent = 'Documents we still need'; docs.appendChild(h);
         if (s.docsDue){ const p = document.createElement('p'); p.className = 'q-help'; p.textContent = 'Please send them by ' + s.docsDue + '.'; docs.appendChild(p); }
         const ul = document.createElement('ul'); ul.style.cssText = 'padding-left:20px;margin:6px 0;';
-        s.needed.forEach(l => { const li = document.createElement('li'); li.textContent = l; ul.appendChild(li); });
+        s.needed.forEach((l, i) => {
+          const li = document.createElement('li'); li.textContent = l;
+          const w = (s.neededWhy || [])[i];
+          if (w){ const sp = document.createElement('div'); sp.className = 'doc-why'; sp.textContent = w; li.appendChild(sp); }
+          ul.appendChild(li);
+        });
         docs.appendChild(ul);
         if (s.helpful.length){
           const p = document.createElement('p'); p.className = 'q-help'; p.textContent = 'Also helpful if you have them: ' + s.helpful.join(', ') + '.'; docs.appendChild(p);
@@ -1089,6 +1095,7 @@
         body.className = 'doc-body';
         body.innerHTML = '<div class="doc-label">' + escapeHtml(d.label) +
           (d.required && !got ? '<span class="doc-req">Needed</span>' : '') + '</div>' +
+          (d.why && !got ? '<div class="doc-why">' + escapeHtml(d.why) + '</div>' : '') +
           (d.help ? '<div class="doc-help">' + escapeHtml(d.help) + '</div>' : '') +
           (got ? '<div class="doc-files">Received, thank you</div>' : '');
         row.appendChild(body);
@@ -1155,6 +1162,7 @@
     body.className = 'doc-body';
     body.innerHTML = '<div class="doc-label">' + escapeHtml(d.label) +
       (d.required ? '<span class="doc-req">Needed</span>' : '') + '</div>' +
+      (d.why && !(d.fileCount > 0) ? '<div class="doc-why">' + escapeHtml(d.why) + '</div>' : '') +
       (d.help ? '<div class="doc-help">' + escapeHtml(d.help) + '</div>' : '') +
       (d.fileCount > 0 ? '<div class="doc-files">' + d.fileCount +
         (d.fileCount === 1 ? ' file uploaded' : ' files uploaded') + '</div>' : '');
