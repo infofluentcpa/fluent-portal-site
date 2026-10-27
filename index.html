@@ -230,6 +230,7 @@
       </section>
 
       <section class="screen" id="screen-status">
+        <div id="st-thanks"></div>
         <div class="eyebrow" id="st-eyebrow">Your return</div>
         <h1 id="st-title">Where things stand</h1>
         <p class="lead" id="st-text"></p>
@@ -353,6 +354,7 @@
   // Set once the client is past the code screen, so a slow link check that
   // answers late can never pull them back out of the questionnaire.
   let PAST_CODE = false;
+  let JUST_SUBMITTED = null;   // set when the questionnaire was just sent: the status page thanks them first
   // The questionnaire was already sent: the link shows where the return is (#62).
   let SUBMITTED = false;
 
@@ -377,21 +379,52 @@
         const lab = document.createElement('span'); lab.textContent = t.label;
         row.appendChild(dot); row.appendChild(lab); tl.appendChild(row);
       });
+      // Just submitted: thank them, and their summary PDF, above where things stand.
+      const thanks = document.getElementById('st-thanks'); thanks.innerHTML = '';
+      if (JUST_SUBMITTED){
+        thanks.innerHTML = '<div class="section-intro" style="margin-bottom:18px;"><div class="eyebrow">Answers received</div><h2>Thank you, your answers are in</h2>' +
+          '<p>Next: your documents. The list below is built from your answers.</p><div id="st-copy"></div></div>';
+        showCopy(JUST_SUBMITTED.copy, 'st-copy');
+        JUST_SUBMITTED = null;
+      }
       const docs = document.getElementById('st-docs'); docs.innerHTML = '';
-      if (s.needed.length || s.helpful.length){
-        const h = document.createElement('h2'); h.style.fontSize = '18px'; h.textContent = 'Documents we still need'; docs.appendChild(h);
-        if (s.docsDue){ const p = document.createElement('p'); p.className = 'q-help'; p.textContent = 'Please send them by ' + s.docsDue + '.'; docs.appendChild(p); }
-        const ul = document.createElement('ul'); ul.style.cssText = 'padding-left:20px;margin:6px 0;';
-        s.needed.forEach((l, i) => {
-          const li = document.createElement('li'); li.textContent = l;
-          const w = (s.neededWhy || [])[i];
-          if (w){ const sp = document.createElement('div'); sp.className = 'doc-why'; sp.textContent = w; li.appendChild(sp); }
-          ul.appendChild(li);
+      const items = s.items || [];
+      if (items.length){
+        const h = document.createElement('h2'); h.style.fontSize = '18px'; h.textContent = 'Your document checklist'; docs.appendChild(h);
+        const intro = document.createElement('p'); intro.className = 'q-help';
+        intro.textContent = 'Tick each one as you upload it, to keep track. You can come back to this page any time with the link in your email. We tick it off on our side once we have it.' +
+          (s.received ? ' We already have ' + s.received + ' of your documents.' : '') + (s.docsDue ? ' Please send them by ' + s.docsDue + '.' : '');
+        docs.appendChild(intro);
+        // PDFs, please (owner, 2026-10-25): most banks, employers and brokers offer one to download.
+        const fmt = document.createElement('p'); fmt.className = 'q-help'; fmt.style.cssText = 'background:var(--mist);border-radius:9px;padding:10px 12px;';
+        fmt.textContent = 'PDFs, please. Most banks, employers and brokers let you download the form as a PDF from their website, and that is best. For paper, a scan is next best. Send a phone photo only if there is no other way: flat, all four corners showing, and the text sharp.';
+        docs.appendChild(fmt);
+        items.forEach(it => {
+          const row = document.createElement('label'); row.className = 'doc-item'; row.style.cursor = 'pointer';
+          const box = document.createElement('input'); box.type = 'checkbox'; box.checked = !!it.marked; box.style.cssText = 'width:20px;height:20px;margin:2px 10px 0 0;flex:none;accent-color:var(--teal);';
+          const body = document.createElement('div'); body.className = 'doc-body';
+          body.innerHTML = '<div class="doc-label">' + escapeHtml(it.label) + (it.required ? '<span class="doc-req">Needed</span>' : '') + '</div>' +
+            (it.why ? '<div class="doc-why">' + escapeHtml(it.why) + '</div>' : '') + '<div class="doc-files" style="display:' + (it.marked ? 'block' : 'none') + ';">You ticked this as sent</div>';
+          box.addEventListener('change', () => {
+            const note = body.querySelector('.doc-files'); note.style.display = box.checked ? 'block' : 'none'; note.textContent = box.checked ? 'You ticked this as sent' : '';
+            apiPost('markDoc', { token: TOKEN, sessionKey: SESSION_KEY, requestId: it.requestId, marked: box.checked }).then(r => {
+              if (!r || !r.ok){ box.checked = !box.checked; note.style.display = 'block'; note.textContent = 'Could not save that tick. Please try again.'; }
+            }).catch(() => { box.checked = !box.checked; note.style.display = 'block'; note.textContent = 'Could not save that tick. Check your connection and try again.'; });
+          });
+          row.appendChild(box); row.appendChild(body); docs.appendChild(row);
         });
-        docs.appendChild(ul);
-        if (s.helpful.length){
-          const p = document.createElement('p'); p.className = 'q-help'; p.textContent = 'Also helpful if you have them: ' + s.helpful.join(', ') + '.'; docs.appendChild(p);
-        }
+        const pdf = document.createElement('button'); pdf.type = 'button'; pdf.className = 'btn btn-ghost'; pdf.style.marginTop = '12px'; pdf.textContent = 'Download your checklist (PDF)';
+        pdf.addEventListener('click', () => {
+          pdf.disabled = true; pdf.textContent = 'Preparing…';
+          apiPost('checklistPdf', { token: TOKEN, sessionKey: SESSION_KEY }).then(r => {
+            pdf.disabled = false; pdf.textContent = 'Download your checklist (PDF)';
+            if (!r || !r.ok || !r.pdf) return;
+            const bytes = Uint8Array.from(atob(r.pdf), c => c.charCodeAt(0));
+            const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' })); a.download = r.name || 'document-checklist.pdf';
+            document.body.appendChild(a); a.click(); a.remove();
+          }).catch(() => { pdf.disabled = false; pdf.textContent = 'Download your checklist (PDF)'; });
+        });
+        docs.appendChild(pdf);
         if (res.uploads && res.uploads.url){
           const a = document.createElement('a'); a.className = 'btn btn-primary'; a.href = res.uploads.url; a.target = '_blank'; a.rel = 'noopener';
           a.style.marginTop = '12px'; a.textContent = 'Upload documents to ' + res.uploads.name; docs.appendChild(a);
@@ -640,7 +673,9 @@
     }
   }
   function visibleQuestions(){
-    return questions.filter(q => isVisible(q) && !CONFIRMED_SKIP[q.id]);
+    // The documents screen is no longer a question (owner, 2026-10-25): "Submit my answers" comes first, then the client
+    // lands on their documents page (the status page) with the checklist, the upload button and the checklist PDF.
+    return questions.filter(q => isVisible(q) && !CONFIRMED_SKIP[q.id] && q.type !== 'upload');
   }
 
   // stay = { key, top, y }: a redraw caused by tapping something on the SAME question keeps
@@ -1364,8 +1399,8 @@
 
   // The branded summary, offered for download. The same file was emailed;
   // if anything about it failed, the thank-you screen simply stays as is.
-  function showCopy(copy){
-    const box = document.getElementById('done-copy');
+  function showCopy(copy, boxId){
+    const box = document.getElementById(boxId || 'done-copy');
     if (!box || !copy || !copy.pdf) return;
     try {
       const bytes = Uint8Array.from(atob(copy.pdf), c => c.charCodeAt(0));
@@ -1400,8 +1435,11 @@
             : 'Your answers are saved, but we couldn’t finish sending your questionnaire. Please try again in a moment.');
           return;
         }
-        showCopy(res.copy);
-        show('screen-done');
+        // Straight on to their documents page: the checklist, the upload button and the PDF (staff preview: the old
+        // "all set" screen, as it has no session to open the status page with).
+        if (PREVIEW) { showCopy(res.copy); show('screen-done'); return; }
+        JUST_SUBMITTED = { copy: res.copy || null };
+        loadStatus();
       });
     }).catch(() => submitProblem('We couldn’t reach the server. Check your internet connection, then try again. Your answers are saved.'));
   }
