@@ -278,6 +278,42 @@
   let answers = {}; // question_id -> {answer, weight, text}
   const notesSent = {}; // <id>_NOTE ids already saved, so clearing one saves a blank
 
+  // ---- How long each question screen takes (#63, QuestionMeasure.gs) ----
+  // Time only, never what is typed: counted while the page is visible, at most 10 minutes a stay, sent when they move on
+  // (every few screens) or the page is hidden. A failed send is dropped: it must never get in the way of their answers.
+  const qTime = { id: null, since: 0, acc: {}, n: 0 };
+  function qTimeStop(){
+    if (qTime.id && qTime.since){
+      const a = qTime.acc[qTime.id] = qTime.acc[qTime.id] || { secs: 0, visits: 0 };
+      a.secs += Math.min(600, Math.round((Date.now() - qTime.since) / 1000));
+    }
+    qTime.since = 0;
+  }
+  function qTimeAt(id){
+    if (id === qTime.id){ if (!qTime.since && document.visibilityState !== 'hidden') qTime.since = Date.now(); return; }
+    qTimeStop();
+    qTime.id = id;
+    if (id){
+      (qTime.acc[id] = qTime.acc[id] || { secs: 0, visits: 0 }).visits++;
+      if (document.visibilityState !== 'hidden') qTime.since = Date.now();
+      if (++qTime.n >= 5) qTimeSend(false);
+    }
+  }
+  function qTimeSend(closing){
+    if (PREVIEW || !SESSION_KEY || !TOKEN) return;
+    const list = Object.keys(qTime.acc).map(k => ({ id: k, secs: qTime.acc[k].secs, visits: qTime.acc[k].visits })).filter(t => t.secs || t.visits);
+    qTime.acc = {}; qTime.n = 0;
+    if (!list.length) return;
+    try {
+      fetch(API, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ action: 'questionTiming', token: TOKEN, sessionKey: SESSION_KEY, timing: list }), keepalive: !!closing }).catch(() => {});
+    } catch (e) { /* time is a nice-to-have */ }
+  }
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden'){ qTimeStop(); qTimeSend(true); }
+    else if (qTime.id) qTime.since = Date.now();
+  });
+
   const screens = {};
   document.querySelectorAll('.screen').forEach(s => screens[s.id] = s);
   // Every screen change starts at the top. Without this, a phone keeps
@@ -688,6 +724,7 @@
     if (qIndex >= vis.length) qIndex = vis.length - 1;
     if (qIndex < 0) qIndex = 0;
     const q = vis[qIndex];
+    qTimeAt(q.id);
     const secTitle = SECTIONS[q.section] ? SECTIONS[q.section].title : '';
     document.getElementById('progress-label').textContent =
       secTitle ? secTitle + ' · ' + (qIndex + 1) + ' of ' + vis.length
@@ -1422,6 +1459,7 @@
   }
 
   function finishUp(){
+    qTimeAt(null); qTimeSend(false);
     show('screen-loading');
     flushSaves().then(() => {
       if (!PREVIEW && Object.keys(pendingSaves).length){
