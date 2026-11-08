@@ -50,6 +50,7 @@
   .progress-label #progress-pct{font-family:'Space Grotesk',sans-serif;font-weight:600;color:var(--teal);}
   .progress-track{height:6px;border-radius:4px;background:var(--mist-line);overflow:hidden;margin-bottom:30px;}
   .save-note{font-size:12px;color:var(--slate);margin:6px 0 2px;}
+  .year-note{font-size:13px;color:var(--ink, #1B2021);margin:10px 0 0;}
   .progress-fill{height:100%;width:0%;background:var(--teal);border-radius:4px;transition:width .3s ease;}
 
   .q-block h2{font-size:19px;font-weight:600;line-height:1.4;margin:0 0 4px;}
@@ -220,6 +221,7 @@
       <section class="screen" id="screen-form">
         <div class="progress-label"><span id="progress-label">Question 1</span><span id="progress-pct"></span></div>
         <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+        <div class="year-note" id="year-note" style="display:none;"></div>
         <div class="save-note" id="save-note">✓ Saved as you go. You can close this page and come back any time with the link in your email.</div>
         <div class="error-box" id="form-error"></div>
         <div class="q-block" id="q-container"></div>
@@ -418,7 +420,10 @@
       // Just submitted: thank them, and their summary PDF, above where things stand.
       const thanks = document.getElementById('st-thanks'); thanks.innerHTML = '';
       if (JUST_SUBMITTED){
-        thanks.innerHTML = '<div class="section-intro" style="margin-bottom:18px;"><div class="eyebrow">Answers received</div><h2>Thank you, your answers are in</h2>' +
+        thanks.innerHTML = JUST_SUBMITTED.pass === 3
+          ? '<div class="section-intro" style="margin-bottom:18px;"><div class="eyebrow">Answers received</div><h2>Thank you, your planning answers are in</h2>' +
+            '<p>We will go over them with you. Below is where your tax return stands.</p></div>'
+          : '<div class="section-intro" style="margin-bottom:18px;"><div class="eyebrow">Answers received</div><h2>Thank you, your answers are in</h2>' +
           '<p>Next: your documents. The list below is built from your answers.</p><div id="st-copy"></div></div>';
         showCopy(JUST_SUBMITTED.copy, 'st-copy');
         JUST_SUBMITTED = null;
@@ -479,7 +484,7 @@
     // Staff preview: no link or code; straight to the questions, with a banner. Nothing is saved.
     const bar = document.createElement('div');
     bar.style.cssText = 'position:sticky;top:0;z-index:50;background:#8A6100;color:#fff;font:600 13px Inter,Arial,sans-serif;padding:9px 14px;text-align:center;';
-    bar.textContent = 'Staff preview: this is what the client sees' + (PREVIEW.pass === 2 ? ' in the follow-up' : '') + '. Nothing you enter here is saved or sent.';
+    bar.textContent = 'Staff preview: this is what the client sees' + (PREVIEW.pass === 3 ? ' in the planning questionnaire' : PREVIEW.pass === 2 ? ' in the follow-up' : '') + '. Nothing you enter here is saved or sent.';
     document.body.insertBefore(bar, document.body.firstChild);
     // Next tick: boot() runs before the variables loadQuestions() uses are declared further down.
     setTimeout(loadQuestions, 0);
@@ -620,6 +625,11 @@
       // Same as last year: screens they already confirmed stay skipped; reminders by question.
       (res.confirmedSame || []).forEach(id => { CONFIRMED_SKIP[id] = true; });
       HINTS = res.hints || {};
+      PREFILL = res.prefill || {}; PREFILL_NOTE = res.prefillNote || {};
+      // "This year" in every question means the tax year: say which, once (owner 2026-11-07).
+      if (res.taxYear){ const yn = document.getElementById('year-note'); yn.textContent = PASS === 3
+          ? 'These questions look ahead. They are separate from your ' + res.taxYear + ' tax return and do not change it.'
+          : 'Every question is about the ' + res.taxYear + ' tax year (January to December ' + res.taxYear + ') unless it says otherwise.'; yn.style.display = 'block'; }
       // Resume at the first question still unanswered (or the last one, so
       // finishing stays the client's choice — never an automatic submit).
       const vis = visibleQuestions();
@@ -635,6 +645,10 @@
   let RESUMED = false, WELCOMED_BACK = false, RESUME_AT = null;
   const CONFIRMED_SKIP = {};   // question ids confirmed "same as last year": their screens are skipped
   let HINTS = {};              // question id → a reminder line ("Last year's return showed …")
+  // Pre-filled from last year's return (#140): only answers a preparer approved. Ticked when the screen is first shown,
+  // saved only when the client continues past it or changes it (never by autosave while untouched).
+  let PREFILL = {}, PREFILL_NOTE = {};
+  const PREFILL_SHOWN = {};
   const PREVIEW_SKIP_SAME = false;
 
   // ---- Same as last year: one screen instead of several (returning clients) ----
@@ -757,7 +771,12 @@
       const w = document.createElement('div');
       w.className = 'section-intro';
       w.style.marginBottom = '14px';
-      w.innerHTML = PASS === 2
+      w.innerHTML = PASS === 3
+        ? '<div class="eyebrow">Planning ahead</div><h2>About the years ahead</h2>' +
+          '<p>These questions are about what is coming: changes you expect, retirement, savings and your family. Your answers help us bring you ideas that fit your plans.</p>' +
+          '<p style="margin-top:8px;">A rough answer is fine. If you are unsure, tap “I’m not sure”. It is a perfectly good answer.</p>' +
+          '<p style="margin-top:8px;">You don’t have to finish in one go: your answers save as you go, and opening the link in your email again brings you back to where you left off.</p>'
+        : PASS === 2
         ? '<div class="eyebrow">Why these questions</div><h2>The details that make our advice yours</h2>' +
           '<p>These build on what you already told us. They are the specifics that let us turn your answers into advice for your situation. Nothing here repeats a question you have answered.</p>' +
           '<p style="margin-top:8px;">You don’t have to finish in one go: your answers save as you go, and opening the link in your email again brings you back to where you left off.</p>'
@@ -799,6 +818,14 @@
       c.appendChild(hint);
     }
 
+    if (PREFILL[q.id] !== undefined && !PREFILL_SHOWN[q.id]){
+      PREFILL_SHOWN[q.id] = true;
+      if (!answers[q.id]) answers[q.id] = { answer: PREFILL[q.id], weight: q.weight, text: q.text, prefill: true };
+    }
+    if (PREFILL[q.id] !== undefined){
+      const p = document.createElement('p'); p.className = 'q-help prefill-note'; p.style.color = 'var(--teal-deep)'; p.style.fontWeight = '600';
+      p.textContent = q.type === 'multi' ? (PREFILL_NOTE.multi || '') : (PREFILL_NOTE.single || ''); c.appendChild(p);
+    }
     const prior = answers[q.id];
 
     if (q.type === 'upload'){
@@ -1340,6 +1367,7 @@
       toSave.push({ id: noteId, text: 'Client note on: ' + q.text, answer: '', weight: 0 });
     }
     toSave.forEach(a => { lastSent[a.id] = JSON.stringify(a.answer); });
+    if (answers[q.id]) delete answers[q.id].prefill;   // continuing past a pre-filled screen confirms it
     queueSave(toSave);
     WELCOMED_BACK = true;
 
@@ -1364,7 +1392,8 @@
     if (!q || q.type === 'upload') return [];
     const out = [];
     const cur = answers[q.id] ? answers[q.id].answer : '';
-    if (JSON.stringify(cur) !== (lastSent[q.id] === undefined ? JSON.stringify('') : lastSent[q.id])) out.push({ id: q.id, text: q.text, answer: cur, weight: q.weight });
+    // An untouched pre-filled screen is not the client's answer yet.
+    if (!(answers[q.id] && answers[q.id].prefill) && JSON.stringify(cur) !== (lastSent[q.id] === undefined ? JSON.stringify('') : lastSent[q.id])) out.push({ id: q.id, text: q.text, answer: cur, weight: q.weight });
     const noteId = q.id + '_NOTE';
     const note = answers[noteId] ? answers[noteId].answer : '';
     if (JSON.stringify(note) !== (lastSent[noteId] === undefined ? JSON.stringify('') : lastSent[noteId])) out.push({ id: noteId, text: 'Client note on: ' + q.text, answer: note, weight: 0 });
@@ -1476,7 +1505,7 @@
         // Straight on to their documents page: the checklist, the upload button and the PDF (staff preview: the old
         // "all set" screen, as it has no session to open the status page with).
         if (PREVIEW) { showCopy(res.copy); show('screen-done'); return; }
-        JUST_SUBMITTED = { copy: res.copy || null };
+        JUST_SUBMITTED = { copy: res.copy || null, pass: PASS };
         loadStatus();
       });
     }).catch(() => submitProblem('We couldn’t reach the server. Check your internet connection, then try again. Your answers are saved.'));
