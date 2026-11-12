@@ -400,7 +400,7 @@
   function loadStatus(){
     PAST_CODE = true;
     show('screen-loading');
-    apiGet('getStatus', { token: TOKEN, sessionKey: SESSION_KEY }).then(res => {
+    apiPost('getStatus', { token: TOKEN, sessionKey: SESSION_KEY }).then(res => {
       if (!res || !res.ok){ message('Please open your link again', 'For your security, please reopen the link from your email and enter your code.'); return; }
       const s = res.status;
       document.getElementById('st-eyebrow').textContent = (res.firstName ? 'Hi ' + res.firstName + ': ' : '') + res.returnLabel;
@@ -497,7 +497,7 @@
   // Focus on the next tick: boot() runs before the code boxes are wired up
   // further down this script (calling it directly threw and stopped the page).
   if (needsCodeLikely){ show('screen-access'); setTimeout(focusFirstCodeBox, 0); }
-  apiGet('validateToken', SESSION_KEY ? { token: TOKEN, sessionKey: SESSION_KEY } : { token: TOKEN }).then(res => {
+  apiPost('validateToken', SESSION_KEY ? { token: TOKEN, sessionKey: SESSION_KEY } : { token: TOKEN }).then(res => {
     if (PAST_CODE) return;
     if (!res.ok){
       const copy = {
@@ -592,7 +592,7 @@
   function loadQuestions(){
     PAST_CODE = true;
     show('screen-loading');
-    apiGet('getQuestions', { token: TOKEN, sessionKey: SESSION_KEY }).then(res => {
+    apiPost('getQuestions', { token: TOKEN, sessionKey: SESSION_KEY }).then(res => {
       if (!res.ok){ message('Session expired', 'Please reopen your link to continue.'); return; }
       questions = res.questions || [];
       PASS = res.pass || 1;
